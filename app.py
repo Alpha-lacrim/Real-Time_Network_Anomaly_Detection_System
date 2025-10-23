@@ -134,45 +134,46 @@ class NetworkAnomalyDetector:
             'anomaly_score': float(df_score)
         }
 
+
 class RuleBasedDetector:
     """Traditional rule-based anomaly detection"""
 
     @staticmethod
     def detect(packet):
-        """Detect anomalies using predefined rules"""
-        anomaly_score = 0
+        """Detect anomalies using predefined rules (deterministic)"""
+        anomaly_score = 0.0
         reasons = []
 
         # Rule 1: Unusually high packet count
         if packet['packets'] > 800:
-            anomaly_score += 0.3
+            anomaly_score += 0.35
             reasons.append('High packet count')
 
         # Rule 2: Large data transfer
         if packet['bytes'] > 40000:
-            anomaly_score += 0.25
+            anomaly_score += 0.35
             reasons.append('Large data transfer')
 
-        # Rule 3: Suspicious protocol usage
-        if packet['protocol'] in ['ICMP'] and random.random() > 0.7:
+        # Rule 3: Suspicious protocol usage (ICMP floods)
+        if packet['protocol'] == 'ICMP' and packet['packets'] > 300:
             anomaly_score += 0.2
-            reasons.append('Suspicious protocol')
+            reasons.append('ICMP flood suspicion')
 
-        # Rule 4: Port scanning pattern (simulated)
-        if packet['packets'] < 100 and random.random() > 0.9:
-            anomaly_score += 0.25
-            reasons.append('Possible port scan')
+        # Rule 4: Very small packets but many destinations (simulated by packets < X)
+        if packet['packets'] < 60 and packet['bytes'] < 2000:
+            anomaly_score += 0.15
+            reasons.append('Tiny packet bursts - possible scan')
 
-        # Add some randomness to simulate real-world variability
-        anomaly_score += random.uniform(0, 0.15)
-
+        # Clip max
+        anomaly_score = min(anomaly_score, 0.95)
         is_anomaly = anomaly_score > 0.7
 
         return {
             'is_anomaly': is_anomaly,
-            'confidence': min(anomaly_score, 0.95),
+            'confidence': anomaly_score,
             'reasons': reasons if is_anomaly else []
         }
+
 
 
 class HybridDetector:
