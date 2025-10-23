@@ -96,19 +96,4 @@ The system is a single-file **Flask** application with a background thread.
 
     You should immediately see the dashboard come alive with simulated data, with the **"Total Packets"** count increasing with a **two-second** interval.
 
------
-
-## Explanation of Changes
-
-1.  **Title and Body Consistency:**
-      * **Rule-Based $\rightarrow$ rule-based:** Lowercase for compound adjectives unless it's an abbreviation like "ML."
-      * **ML $\rightarrow$ ML Engine (Isolation Forest):** Used parentheses for consistency after the first mention.
-      * **Network Anomaly Detection System (NADS):** Abbreviating NADS and ML upon first use allows for shorter, cleaner text later on.
-2.  **Hyphenation and Capitalization:**
-      * **rule-based** (adjective) and **Machine Learning (ML)** (noun/adjective) were standardized throughout.
-3.  **Numerical Consistency (AP Style/Technical Writing):**
-      * **2 seconds $\rightarrow$ two seconds** and **20 packets $\rightarrow$ 20 packets/two-second interval:** In technical and general writing, single-digit numbers are often spelled out, though using the numeral for "20" is fine. I made it consistent by spelling out "two."
-4.  **Clarity and Flow:**
-      * "The required Python libraries" is clearer than "The required Python libraries."
-      * "**Please note that** since this is a practical project, it is continually being maintained and improved" is a more polished way of saying the same thing as the original last sentence in the "How It Works" section.
       * In point 5 of "How It Works," using quotes around **"Normal"** and **"Anomaly"** clearly references the tags.
