@@ -95,5 +95,4 @@ The system is a single-file **Flask** application with a background thread.
     ```
 
     You should immediately see the dashboard come alive with simulated data, with the **"Total Packets"** count increasing with a **two-second** interval.
-
-      * In point 5 of "How It Works," using quotes around **"Normal"** and **"Anomaly"** clearly references the tags.
+    The packets are currently generated randomly, I will try to use scapy to capture real packets after making some changes in Security Engine models.
