@@ -44,15 +44,25 @@ class NetworkAnomalyDetector:
     def __init__(self):
         """Initialize the ML model (Isolation Forest)"""
         self.model = IsolationForest(
-            contamination=0.15,  # Expected anomaly rate
+            contamination=0.15,  # Expected anomaly rate (tune this)
             random_state=42,
             n_estimators=100
         )
         self.scaler = StandardScaler()
         self.is_trained = False
+        # define feature order explicitly and use it consistently
+        self.feature_names = [
+            'packet_rate',
+            'byte_rate',
+            'protocol_numeric',
+            'time_of_day',
+            'src_entropy',
+            'dst_entropy',
+            'packet_size_avg'
+        ]
 
     def extract_features(self, packet):
-        """Extract features from network packet"""
+        """Extract features from network packet (returns dict)"""
         return {
             'packet_rate': packet['packets'] / 100.0,
             'byte_rate': packet['bytes'] / 10000.0,
@@ -63,12 +73,13 @@ class NetworkAnomalyDetector:
             'packet_size_avg': packet['bytes'] / max(packet['packets'], 1)
         }
 
+
     def _calculate_entropy(self, ip_address):
         """Calculate Shannon entropy of IP address"""
         ip_str = ip_address.replace('.', '')
         if not ip_str:
-            return 0
-        entropy = 0
+            return 0.0
+        entropy = 0.0
         for digit in set(ip_str):
             prob = ip_str.count(digit) / len(ip_str)
             entropy -= prob * np.log2(prob)
@@ -76,13 +87,15 @@ class NetworkAnomalyDetector:
 
     def train(self, data):
         """Train the model on historical data"""
-        if len(data) < 50:  # The model will not train unless enough data is created
+        # require fewer samples for this demo; tune in production
+        if len(data) < 20:
             return False
 
         feature_matrix = []
         for packet in data:
             features = self.extract_features(packet)
-            feature_matrix.append(list(features.values()))
+            # preserve the same order using self.feature_names
+            feature_matrix.append([features[name] for name in self.feature_names])
 
         X = np.array(feature_matrix)
         X_scaled = self.scaler.fit_transform(X)
@@ -93,7 +106,7 @@ class NetworkAnomalyDetector:
     def predict(self, packet):
         """Predict if packet is anomalous using ML"""
         if not self.is_trained:
-            # Return neutral prediction if not trained
+            # Neutral prediction if not trained
             return {
                 'is_anomaly': False,
                 'confidence': 0.5,
@@ -101,29 +114,25 @@ class NetworkAnomalyDetector:
             }
 
         features = self.extract_features(packet)
-        X = np.array([list(features.values())])
+        X = np.array([[features[name] for name in self.feature_names]])
         X_scaled = self.scaler.transform(X)
 
-        # Get prediction and anomaly score
-        prediction = self.model.predict(X_scaled)[0]
-        # after obtaining anomaly_score
-        anomaly_score = self.model.score_samples(X_scaled)[0]  # larger => more normal
+        # IsolationForest.decision_function: higher -> more normal; negative => anomaly
+        df_score = self.model.decision_function(X_scaled)[0]  # typical range depends on model
+        # invert so larger => more anomalous and map to [0,1]
+        # Use a scaling factor to control sensitivity (tune this, e.g. 5 or 10)
+        scaled = -df_score * 5.0
+        confidence = 1.0 / (1.0 + np.exp(-scaled))  # sigmoid
 
-        # invert so larger => more anomalous
-        mapped_score = -anomaly_score
+        is_anomaly = (self.model.predict(X_scaled)[0] == -1)
 
-        # map to [0,1] with sigmoid
-        confidence = 1 / (1 + np.exp(-mapped_score))  # sigmoid(-score) gives probability of anomaly
-
-        # optional: clip/scale
+        # Clip and return
         confidence = float(np.clip(confidence, 0.0, 1.0))
-
         return {
-            'is_anomaly': prediction == -1,
-            'confidence': float(confidence),
-            'anomaly_score': float(anomaly_score)
+            'is_anomaly': bool(is_anomaly),
+            'confidence': confidence,
+            'anomaly_score': float(df_score)
         }
-
 
 class RuleBasedDetector:
     """Traditional rule-based anomaly detection"""
