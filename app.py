@@ -73,7 +73,6 @@ class NetworkAnomalyDetector:
             'packet_size_avg': packet['bytes'] / max(packet['packets'], 1)
         }
 
-
     def _calculate_entropy(self, ip_address):
         """Calculate Shannon entropy of IP address"""
         ip_str = ip_address.replace('.', '')
@@ -164,6 +163,11 @@ class RuleBasedDetector:
             anomaly_score += 0.15
             reasons.append('Tiny packet bursts - possible scan')
 
+        if packet['protocol'] == 'TCP' and packet['packets'] > 5000:
+            anomaly_score += 0.10
+            reasons.append('TCP flood suspicion')
+
+
         # Clip max
         anomaly_score = min(anomaly_score, 0.95)
         is_anomaly = anomaly_score > 0.7
@@ -173,7 +177,6 @@ class RuleBasedDetector:
             'confidence': anomaly_score,
             'reasons': reasons if is_anomaly else []
         }
-
 
 
 class HybridDetector:
@@ -203,7 +206,7 @@ class HybridDetector:
             }
 
         # Rule high confidence
-        if rule_result['is_anomaly'] and rule_result['confidence'] > 0.80:
+        if rule_result['is_anomaly'] and rule_result['confidence'] > 0.85:
             return {
                 'is_anomaly': True,
                 'confidence': rule_result['confidence'],
@@ -236,9 +239,10 @@ def generate_network_packet():
         'src_ip': f"192.168.{random.randint(0, 255)}.{random.randint(0, 255)}",
         'dst_ip': f"10.0.{random.randint(0, 255)}.{random.randint(0, 255)}",
         'protocol': random.choice(PROTOCOLS),
-        'packets': random.randint(50, 1050),
-        'bytes': random.randint(1000, 51000)
+        'packets': random.randint(25, 3050),
+        'bytes': random.randint(1000, 101000)
     }
+
 
 def process_packet(packet):
     """Process a packet through all detection systems"""
@@ -294,7 +298,7 @@ def process_packet(packet):
     # Train ML model periodically
     if len(traffic_history) >= 20 and not ml_detector.is_trained:
         ml_detector.train(traffic_history)
-        print("ML model trained on historical data")
+        print("ML model was trained on historical data")
 
     return packet
 
@@ -403,7 +407,7 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="header">
             <div>
-                <h1>🛡️ Hybrid Network Anomaly Detection System</h1>
+                <h1>Hybrid Network Anomaly Detection System </h1>
                 <p>Real-time monitoring with ML-powered threat detection</p>
             </div>
         </div>
@@ -447,12 +451,12 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="section">
-            <div class="section-title">🚨 Recent Anomalies</div>
+            <div class="section-title">Recent Anomalies</div>
             <div id="anomalies-list"></div>
         </div>
 
         <div class="section">
-            <div class="section-title">📡 Live Traffic Feed</div>
+            <div class="section-title">Live Traffic Feed</div>
             <table>
                 <thead>
                     <tr>
