@@ -76,7 +76,7 @@ class NetworkAnomalyDetector:
 
     def train(self, data):
         """Train the model on historical data"""
-        if len(data) < 50:
+        if len(data) < 50:  # The model will not train unless enough data is created
             return False
 
         feature_matrix = []
@@ -124,6 +124,7 @@ class NetworkAnomalyDetector:
             'anomaly_score': float(anomaly_score)
         }
 
+
 class RuleBasedDetector:
     """Traditional rule-based anomaly detection"""
 
@@ -164,6 +165,7 @@ class RuleBasedDetector:
             'reasons': reasons if is_anomaly else []
         }
 
+
 class HybridDetector:
     """Combines ML and Rule-based detection"""
 
@@ -181,7 +183,7 @@ class HybridDetector:
             }
 
         # ML high confidence
-        if ml_result['is_anomaly'] and ml_result['confidence'] > 0.85:
+        if ml_result['is_anomaly'] and ml_result['confidence'] > 0.80:
             return {
                 'is_anomaly': True,
                 'confidence': ml_result['confidence'],
@@ -209,10 +211,12 @@ class HybridDetector:
             'ml_score': ml_result['confidence']
         }
 
+
 # Initialize detectors
 ml_detector = NetworkAnomalyDetector()
 rule_detector = RuleBasedDetector()
 hybrid_detector = HybridDetector()
+
 
 def generate_network_packet():
     """Generate simulated network traffic"""
@@ -228,7 +232,7 @@ def generate_network_packet():
 
 def process_packet(packet):
     """Process a packet through all detection systems"""
-    global stats, traffic_history, anomaly_history, ml_detector
+    global stats, traffic_history, anomaly_history, ml_detector, rule_detector
 
     # Get predictions from both systems
     rule_result = rule_detector.detect(packet)
