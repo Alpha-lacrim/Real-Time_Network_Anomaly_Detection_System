@@ -1,10 +1,10 @@
 """
 Network Anomaly Detection System with Hybrid ML + Rule-Based Detection
 Requirements: pip install numpy pandas scikit-learn flask flask-socketio
-Run: python this_file.py
 """
 
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
@@ -12,22 +12,17 @@ import time
 import random
 from flask import Flask, render_template_string
 from flask_socketio import SocketIO, emit
-import threading
+import json
 
-# -------------------------
-# Configuration / Globals
-# -------------------------
-MAX_HISTORY = 200
-TRAIN_THRESHOLD = 50
-
-ATTACK_TYPES = ['DDoS', 'Port Scan', 'Brute Force', 'Data Exfiltration', 'Malware C&C']
-PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS']
-
+# Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
-# Force threading async mode so background thread and socketio.emit work reliably
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Global variables
+MAX_HISTORY = 200
+ml_model = None
+scaler = None
 traffic_history = []
 anomaly_history = []
 stats = {
@@ -37,18 +32,19 @@ stats = {
     'rule_based_detections': 0,
     'ml_based_detections': 0,
     'hybrid_detections': 0,
-    'threat_level': 'Low',
-    'ml_trained': False
+    'threat_level': 'Low'
 }
 
-# -------------------------
-# Detectors
-# -------------------------
+# Configuration
+ATTACK_TYPES = ['DDoS', 'Port Scan', 'Brute Force', 'Data Exfiltration', 'Malware C&C']
+PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS']
+
+
 class NetworkAnomalyDetector:
     def __init__(self):
         """Initialize the ML model (Isolation Forest)"""
         self.model = IsolationForest(
-            contamination=0.15,
+            contamination=0.15,  # Expected anomaly rate
             random_state=42,
             n_estimators=100
         )
@@ -56,47 +52,31 @@ class NetworkAnomalyDetector:
         self.is_trained = False
 
     def extract_features(self, packet):
-        """Extract features from network packet using packet timestamp (if present)."""
-        # get hour from packet timestamp when possible, fallback to now
-        try:
-            hour = datetime.strptime(packet.get('timestamp', ''), '%H:%M:%S').hour
-        except Exception:
-            hour = datetime.now().hour
-
-        # safe protocol numeric mapping
-        proto_idx = 0
-        if packet.get('protocol') in PROTOCOLS:
-            if len(PROTOCOLS) > 1:
-                proto_idx = PROTOCOLS.index(packet['protocol']) / (len(PROTOCOLS) - 1)
-            else:
-                proto_idx = 0.0
-
+        """Extract features from network packet"""
         return {
-            'packet_rate': packet.get('packets', 0) / 100.0,
-            'byte_rate': packet.get('bytes', 0) / 10000.0,
-            'protocol_numeric': proto_idx,
-            'time_of_day': hour / 24.0,
-            'src_entropy': self._calculate_entropy(packet.get('src_ip', '')),
-            'dst_entropy': self._calculate_entropy(packet.get('dst_ip', '')),
-            'packet_size_avg': packet.get('bytes', 0) / max(packet.get('packets', 1), 1)
+            'packet_rate': packet['packets'] / 100.0,
+            'byte_rate': packet['bytes'] / 10000.0,
+            'protocol_numeric': PROTOCOLS.index(packet['protocol']) / len(PROTOCOLS),
+            'time_of_day': datetime.now().hour / 24.0,
+            'src_entropy': self._calculate_entropy(packet['src_ip']),
+            'dst_entropy': self._calculate_entropy(packet['dst_ip']),
+            'packet_size_avg': packet['bytes'] / max(packet['packets'], 1)
         }
 
     def _calculate_entropy(self, ip_address):
-        """Calculate Shannon entropy of IP address characters (simple proxy)."""
-        ip_str = str(ip_address).replace('.', '')
+        """Calculate Shannon entropy of IP address"""
+        ip_str = ip_address.replace('.', '')
         if not ip_str:
-            return 0.0
-        entropy = 0.0
-        for ch in set(ip_str):
-            prob = ip_str.count(ch) / len(ip_str)
+            return 0
+        entropy = 0
+        for digit in set(ip_str):
+            prob = ip_str.count(digit) / len(ip_str)
             entropy -= prob * np.log2(prob)
-        # normalize roughly by max possible entropy (digits/characters up to length 8)
-        return float(entropy / 8.0)
+        return entropy / 8.0  # Normalize
 
     def train(self, data):
         """Train the model on historical data"""
-        if len(data) < TRAIN_THRESHOLD:
-            print(f"[ML] Not enough data to train: have {len(data)}, need {TRAIN_THRESHOLD}")
+        if len(data) < 50:
             return False
 
         feature_matrix = []
@@ -108,12 +88,12 @@ class NetworkAnomalyDetector:
         X_scaled = self.scaler.fit_transform(X)
         self.model.fit(X_scaled)
         self.is_trained = True
-        print("[ML] Training completed.")
         return True
 
     def predict(self, packet):
         """Predict if packet is anomalous using ML"""
         if not self.is_trained:
+            # Return neutral prediction if not trained
             return {
                 'is_anomaly': False,
                 'confidence': 0.5,
@@ -124,14 +104,18 @@ class NetworkAnomalyDetector:
         X = np.array([list(features.values())])
         X_scaled = self.scaler.transform(X)
 
+        # Get prediction and anomaly score
         prediction = self.model.predict(X_scaled)[0]
-        anomaly_score = self.model.score_samples(X_scaled)[0]  # larger => more "normal" in sklearn
+        # after obtaining anomaly_score
+        anomaly_score = self.model.score_samples(X_scaled)[0]  # larger => more normal
 
-        # Invert so larger => more anomalous, scale down to reduce saturation
-        mapped_score = -anomaly_score / 4.0
+        # invert so larger => more anomalous
+        mapped_score = -anomaly_score
 
-        # Sigmoid -> probability-like confidence (higher => more anomalous)
-        confidence = 1.0 / (1.0 + np.exp(-mapped_score))
+        # map to [0,1] with sigmoid
+        confidence = 1 / (1 + np.exp(-mapped_score))  # sigmoid(-score) gives probability of anomaly
+
+        # optional: clip/scale
         confidence = float(np.clip(confidence, 0.0, 1.0))
 
         return {
@@ -140,51 +124,53 @@ class NetworkAnomalyDetector:
             'anomaly_score': float(anomaly_score)
         }
 
-
 class RuleBasedDetector:
-    """Simple rule-based detector (deterministic except small simulated noise)."""
+    """Traditional rule-based anomaly detection"""
 
     @staticmethod
     def detect(packet):
-        anomaly_score = 0.0
+        """Detect anomalies using predefined rules"""
+        anomaly_score = 0
         reasons = []
 
-        p = packet.get('packets', 0)
-        b = packet.get('bytes', 0)
-        proto = packet.get('protocol', '')
-
-        if p > 800:
+        # Rule 1: Unusually high packet count
+        if packet['packets'] > 800:
             anomaly_score += 0.3
             reasons.append('High packet count')
 
-        if b > 40000:
+        # Rule 2: Large data transfer
+        if packet['bytes'] > 40000:
             anomaly_score += 0.25
             reasons.append('Large data transfer')
 
-        # keep randomness small but deterministic during tests (seed can be set externally)
-        if proto == 'ICMP' and random.random() > 0.7:
+        # Rule 3: Suspicious protocol usage
+        if packet['protocol'] in ['ICMP'] and random.random() > 0.7:
             anomaly_score += 0.2
             reasons.append('Suspicious protocol')
 
-        if p < 100 and random.random() > 0.9:
+        # Rule 4: Port scanning pattern (simulated)
+        if packet['packets'] < 100 and random.random() > 0.9:
             anomaly_score += 0.25
             reasons.append('Possible port scan')
 
+        # Add some randomness to simulate real-world variability
         anomaly_score += random.uniform(0, 0.15)
+
         is_anomaly = anomaly_score > 0.7
 
         return {
             'is_anomaly': is_anomaly,
-            'confidence': float(min(anomaly_score, 0.95)),
+            'confidence': min(anomaly_score, 0.95),
             'reasons': reasons if is_anomaly else []
         }
 
-
 class HybridDetector:
-    """Combine rule-based and ML results into final decision."""
+    """Combines ML and Rule-based detection"""
 
     @staticmethod
     def detect(packet, rule_result, ml_result):
+        """Hybrid detection logic"""
+        # Both methods agree - highest confidence
         if rule_result['is_anomaly'] and ml_result['is_anomaly']:
             return {
                 'is_anomaly': True,
@@ -194,6 +180,7 @@ class HybridDetector:
                 'ml_score': ml_result['confidence']
             }
 
+        # ML high confidence
         if ml_result['is_anomaly'] and ml_result['confidence'] > 0.85:
             return {
                 'is_anomaly': True,
@@ -203,6 +190,7 @@ class HybridDetector:
                 'ml_score': ml_result['confidence']
             }
 
+        # Rule high confidence
         if rule_result['is_anomaly'] and rule_result['confidence'] > 0.80:
             return {
                 'is_anomaly': True,
@@ -212,6 +200,7 @@ class HybridDetector:
                 'ml_score': ml_result['confidence']
             }
 
+        # Normal traffic
         return {
             'is_anomaly': False,
             'confidence': 1 - max(rule_result['confidence'], ml_result['confidence']),
@@ -220,14 +209,11 @@ class HybridDetector:
             'ml_score': ml_result['confidence']
         }
 
-# initialize detectors
+# Initialize detectors
 ml_detector = NetworkAnomalyDetector()
 rule_detector = RuleBasedDetector()
 hybrid_detector = HybridDetector()
 
-# -------------------------
-# Traffic generation & processing
-# -------------------------
 def generate_network_packet():
     """Generate simulated network traffic"""
     return {
@@ -240,15 +226,16 @@ def generate_network_packet():
         'bytes': random.randint(1000, 51000)
     }
 
-
 def process_packet(packet):
     """Process a packet through all detection systems"""
     global stats, traffic_history, anomaly_history, ml_detector
 
+    # Get predictions from both systems
     rule_result = rule_detector.detect(packet)
     ml_result = ml_detector.predict(packet)
     hybrid_result = hybrid_detector.detect(packet, rule_result, ml_result)
 
+    # Add detection results to packet
     packet.update({
         'is_anomaly': hybrid_result['is_anomaly'],
         'confidence': hybrid_result['confidence'],
@@ -264,7 +251,7 @@ def process_packet(packet):
     if packet['is_anomaly']:
         stats['anomalies_detected'] += 1
         anomaly_history.append(packet)
-        anomaly_history = anomaly_history[-10:]
+        anomaly_history = anomaly_history[-10:]  # Keep last 10
 
         if packet['detected_by'] == 'Rule':
             stats['rule_based_detections'] += 1
@@ -275,6 +262,7 @@ def process_packet(packet):
     else:
         stats['normal_traffic'] += 1
 
+    # Update threat level
     anomaly_rate = (stats['anomalies_detected'] / stats['total_packets']) * 100
     if anomaly_rate > 20:
         stats['threat_level'] = 'Critical'
@@ -285,38 +273,35 @@ def process_packet(packet):
     else:
         stats['threat_level'] = 'Low'
 
-    # Add to traffic history and keep a larger buffer so ML can train
+    # Add to traffic history
     traffic_history.append(packet)
     traffic_history = traffic_history[-MAX_HISTORY:]
 
-    # Train ML model periodically using TRAIN_THRESHOLD
-    if len(traffic_history) >= TRAIN_THRESHOLD and not ml_detector.is_trained:
-        trained = ml_detector.train(traffic_history)
-        stats['ml_trained'] = ml_detector.is_trained
-        if trained:
-            print("[Main] ML model trained on historical data")
+    # Train ML model periodically
+    if len(traffic_history) >= 20 and not ml_detector.is_trained:
+        ml_detector.train(traffic_history)
+        print("ML model trained on historical data")
 
     return packet
 
 
 def background_traffic_generator():
-    """Generate network traffic in background and broadcast to clients"""
+    """Generate network traffic in background"""
     while True:
         packet = generate_network_packet()
         processed_packet = process_packet(packet)
 
+        # Emit to connected clients
         socketio.emit('new_packet', {
             'packet': processed_packet,
             'stats': stats,
             'anomalies': anomaly_history
         })
 
-        time.sleep(2)
+        time.sleep(2)  # 2 seconds interval
 
 
-# -------------------------
-# HTML Dashboard
-# -------------------------
+# HTML Template with Dashboard UI
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -325,22 +310,79 @@ HTML_TEMPLATE = """
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #111827; color: #f3f4f6; padding: 24px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #111827;
+            color: #f3f4f6;
+            padding: 24px;
+        }
         .container { max-width: 1400px; margin: 0 auto; }
-        .header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
         .header h1 { font-size: 28px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 20px; }
+        .header p { color: #9ca3af; margin-top: 4px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 20px;
+        }
         .stat-label { color: #9ca3af; font-size: 14px; margin-bottom: 8px; }
         .stat-value { font-size: 32px; font-weight: bold; }
-        .threat-low { color: #10b981; } .threat-medium { color: #f59e0b; } .threat-high { color: #f97316; } .threat-critical { color: #ef4444; }
-        .ml-card { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); border: 1px solid #3b82f6; }
-        .section { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
-        .anomaly-item { background: #111827; border: 1px solid #7f1d1d; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
-        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 8px; }
-        .badge-attack { background: #dc2626; color: white; } .badge-hybrid { background: #9333ea; color: white; } .badge-ml { background: #3b82f6; color: white; } .badge-rule { background: #06b6d4; color: white; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; } th { text-align: left; color: #9ca3af; padding: 12px 8px; border-bottom: 1px solid #374151; } td { padding: 12px 8px; border-bottom: 1px solid #374151; }
-        .anomaly-row { background: rgba(127, 29, 29, 0.2); } .ip { color: #60a5fa; }
+        .threat-low { color: #10b981; }
+        .threat-medium { color: #f59e0b; }
+        .threat-high { color: #f97316; }
+        .threat-critical { color: #ef4444; }
+        .ml-card {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            border: 1px solid #3b82f6;
+        }
+        .section {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .anomaly-item {
+            background: #111827;
+            border: 1px solid #7f1d1d;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        .badge-attack { background: #dc2626; color: white; }
+        .badge-hybrid { background: #9333ea; color: white; }
+        .badge-ml { background: #3b82f6; color: white; }
+        .badge-rule { background: #06b6d4; color: white; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; color: #9ca3af; padding: 12px 8px; border-bottom: 1px solid #374151; }
+        td { padding: 12px 8px; border-bottom: 1px solid #374151; }
+        .anomaly-row { background: rgba(127, 29, 29, 0.2); }
+        .ip { color: #60a5fa; }
     </style>
 </head>
 <body>
@@ -420,39 +462,41 @@ HTML_TEMPLATE = """
         let trafficData = [];
 
         socket.on('new_packet', function(data) {
-            if (!data) return;
             updateStats(data.stats);
-            updateAnomalies(data.anomalies || []);
+            updateAnomalies(data.anomalies);
             if (data.packet) updateTrafficTable(data.packet);
         });
+
 
         function updateStats(stats) {
             document.getElementById('total-packets').textContent = stats.total_packets.toLocaleString();
             document.getElementById('normal-traffic').textContent = stats.normal_traffic.toLocaleString();
             document.getElementById('anomalies').textContent = stats.anomalies_detected;
-
+            
             const threatLevel = document.getElementById('threat-level');
             threatLevel.textContent = stats.threat_level;
             threatLevel.className = 'stat-value threat-' + stats.threat_level.toLowerCase();
-
+            
             document.getElementById('rule-detections').textContent = stats.rule_based_detections;
             document.getElementById('ml-detections').textContent = stats.ml_based_detections;
             document.getElementById('hybrid-detections').textContent = stats.hybrid_detections;
-
-            document.getElementById('ml-status').textContent = stats.ml_trained ? 'Active' : 'Training...';
+            
+            if (stats.total_packets >= 50) {
+                document.getElementById('ml-status').textContent = 'Active';
+            }
         }
 
         function updateAnomalies(anomalies) {
             const list = document.getElementById('anomalies-list');
-            if (!anomalies || anomalies.length === 0) {
+            if (anomalies.length === 0) {
                 list.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 40px;">No anomalies detected yet...</p>';
                 return;
             }
-
+            
             list.innerHTML = anomalies.map(a => `
                 <div class="anomaly-item">
                     <div style="margin-bottom: 8px;">
-                        <span class="badge badge-attack">${a.attack_type || ''}</span>
+                        <span class="badge badge-attack">${a.attack_type}</span>
                         ${getMethodBadge(a.detected_by)}
                         <span style="color: #9ca3af; font-size: 13px;">${a.timestamp}</span>
                         <span style="float: right; font-size: 12px; background: #374151; padding: 4px 8px; border-radius: 4px;">
@@ -483,7 +527,7 @@ HTML_TEMPLATE = """
         function updateTrafficTable(packet) {
             trafficData.unshift(packet);
             trafficData = trafficData.slice(0, 20);
-
+            
             const tbody = document.getElementById('traffic-table');
             tbody.innerHTML = trafficData.map(p => `
                 <tr class="${p.is_anomaly ? 'anomaly-row' : ''}">
@@ -509,9 +553,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# -------------------------
-# Flask routes / socket events
-# -------------------------
+
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -520,7 +562,6 @@ def index():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
-    # Safely send no initial packet (client will not try to render missing fields)
     emit('new_packet', {
         'packet': None,
         'stats': stats,
@@ -528,20 +569,18 @@ def handle_connect():
     })
 
 
-# -------------------------
-# App entry
-# -------------------------
 if __name__ == '__main__':
+    # Start background traffic generator in a separate thread
+    import threading
     traffic_thread = threading.Thread(target=background_traffic_generator, daemon=True)
     traffic_thread.start()
 
     print("\n" + "="*60)
-    print("🛡️  Network Anomaly Detection System Started")
+    print("          Network Anomaly Detection System Started")
     print("="*60)
-    print("📊 Dashboard: http://localhost:5000")
-    print("🤖 ML Model: Isolation Forest (scikit-learn)")
-    print("📡 Detection: Hybrid (Rule-based + ML)")
+    print("Dashboard: http://localhost:8080")
+    print("ML Model: Isolation Forest (scikit-learn)")
+    print("Detection: Hybrid (Rule-based + ML)")
     print("="*60 + "\n")
 
-    # Allow unsafe werkzeug only for local dev; adjust host/port for production
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=True, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)
