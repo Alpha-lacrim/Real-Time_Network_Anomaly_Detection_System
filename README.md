@@ -74,7 +74,7 @@ The system is a single-file **Flask** application with a background thread.
     ============================================================
               Network Anomaly Detection System Started
     ============================================================
-    Dashboard: http://localhost:5000
+    Dashboard: http://localhost:8080
     ML Model: Isolation Forest (scikit-learn)
     Detection: Hybrid (Rule-based + ML)
     Mode: SIMULATOR (Generating random packets)
