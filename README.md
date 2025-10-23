@@ -1,4 +1,5 @@
-# Hybrid Network Anomaly Detection System ( Rule-Based and ML-Based Security Engine )
+# Hybrid Network Anomaly Detection System
+( Rule-Based and ML-Based Security Engine )
 
 This project is a real-time **Network Anomaly Detection System (NADS)** that uses a hybrid approach, combining a **Machine Learning (ML)** model (**Isolation Forest**) with a traditional **rule-based** engine to identify suspicious network activity.
 
@@ -79,7 +80,7 @@ The system is a single-file **Flask** application with a background thread.
     Mode: SIMULATOR (Generating random packets)
     ============================================================
 
-    (Werkzeug) Running on [http://127.0.0.1:5000](http://127.0.0.1:5000)
+    (Werkzeug) Running on [http://127.0.0.1:8080](http://127.0.0.1:8080)
     ...
     Client connected
     ```
@@ -87,7 +88,7 @@ The system is a single-file **Flask** application with a background thread.
 3.  Open your browser and navigate to:
 
     ```
-    http://localhost:5000
+    http://localhost:8080
     ```
 
     You should immediately see the dashboard come alive with simulated data, with the **"Total Packets"** count increasing with a **two-second** interval.
