@@ -3,7 +3,10 @@
 
 This project is a real-time **Network Anomaly Detection System (NADS)** that uses a hybrid approach, combining a **Machine Learning (ML)** model (**Isolation Forest**) with a traditional **rule-based** engine to identify suspicious network activity.
 
-It features a live, responsive web dashboard built with **Flask** and **Flask-SocketIO** to visualize network statistics, live traffic, and detected anomalies as they happen.
+It features a live web dashboard built with **Flask** and **Flask-SocketIO** to visualize network statistics, live traffic, and detected anomalies as they happen.
+
+
+<img width="1893" height="887" alt="image" src="https://github.com/user-attachments/assets/7094340d-303b-41bb-98ba-06a65a2000e7" />
 
 -----
 
@@ -30,7 +33,7 @@ The system is a single-file **Flask** application with a background thread.
 5.  **WebSocket Emission (Socket.IO):** The processed packet (now tagged as **"Normal"** or **"Anomaly"**) is broadcast to all connected web clients via **Socket.IO**, which instantly updates the dashboard.
 6.  **ML Training:** The **ML** model initially starts untrained. It automatically trains itself on the first **20** packets it sees, learning what "normal" traffic looks like for that session.
 
-**Please note that** \<ins\>this is a practical project therefore it still needs some maintaining which I try to do over time\</ins\> **since this is a practical project, it is continually being maintained and improved.**
+***since this is a practical project, it is continually being maintained and improved.**
 
 -----
 
