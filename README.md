@@ -7,7 +7,6 @@ It features a live web dashboard built with **Flask** and **Flask-SocketIO** to 
 
 
 <img width="1895" height="986" alt="image" src="https://github.com/user-attachments/assets/243aaadf-2771-4550-8c29-c8b19af288e5" />
-<img width="1859" height="956" alt="image" src="https://github.com/user-attachments/assets/9068e7f4-a3f4-4faf-827b-29e6fee82366" />
 
 
 -----
