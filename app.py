@@ -446,7 +446,7 @@ HTML_TEMPLATE = """
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-label">ML Model Status</div>
-                <div class="stat-value" style="color: #a7f3d0;" id="ml-status">Trained... </div>
+                <div class="stat-value" style="color: #a7f3d0;" id="ml-status">Active </div>
             </div>
             <div class="stat-card rule-card">
                 <div class="stat-label" style="color: #d1fae5;">Rule-Based Checks Run</div>
@@ -597,4 +597,5 @@ if __name__ == '__main__':
     print("="*60 + "\n")
 
     # Run the Flask server
+
     socketio.run(app, debug=False, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)
