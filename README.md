@@ -49,7 +49,7 @@ The system is a single-file **Flask** application with a background thread.
 1.  Clone the repository (or just download the `app.py` file):
 
     ```bash
-    git clone [https://github.com/your-username/your-project-name.git](https://github.com/your-username/your-project-name.git)
+    git clone https://github.com/Alpha-lacrim/Real-Time_Network_Anomaly_Detection_System
     cd your-project-name
     ```
 
