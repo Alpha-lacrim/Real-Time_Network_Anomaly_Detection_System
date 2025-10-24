@@ -83,7 +83,7 @@ The system is a single-file **Flask** application with a background thread.
     Mode: SIMULATOR (Generating random packets)
     ============================================================
 
-    (Werkzeug) Running on [http://127.0.0.1:8080](http://127.0.0.1:8080)
+    (Werkzeug) Running on http://127.0.0.1:8080
     ...
     Client connected
     ```
