@@ -7,6 +7,7 @@ It features a live web dashboard built with **Flask** and **Flask-SocketIO** to 
 
 
 <img width="1895" height="986" alt="image" src="https://github.com/user-attachments/assets/243aaadf-2771-4550-8c29-c8b19af288e5" />
+<img width="1859" height="956" alt="image" src="https://github.com/user-attachments/assets/9068e7f4-a3f4-4faf-827b-29e6fee82366" />
 
 
 -----
@@ -51,7 +52,7 @@ The system is a **Flask** application with a background thread.
 
     ```bash
     git clone https://github.com/Alpha-lacrim/Real-Time_Network_Anomaly_Detection_System
-    cd your-project-name
+    cd Real-Time_Network_Anomaly_Detection_System
     ```
 
 2.  Install the required Python packages:
@@ -86,7 +87,7 @@ The system is a **Flask** application with a background thread.
     Detection: Hybrid (ML Models Voting  + Rule-Based Confidence)
     ============================================================
 
-    Running on http://127.0.0.1:8080
+    (Werkzeug) Running on http://127.0.0.1:8080
     ...
     Client connected
     ```
